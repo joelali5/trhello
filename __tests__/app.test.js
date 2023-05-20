@@ -102,13 +102,41 @@ describe("Social sign-in", () => {
       );
     });
     it("should authenticate user with valid credentials", async () => {
-      const response = await request(app).get("/microsoft/callback?code=valid_code");
+      const response = await request(app).get(
+        "/microsoft/callback?code=valid_code"
+      );
       expect(response.status).toEqual(302);
       expect(response.text).toBe("Authenticated");
     });
 
     it("should not authenticate user with invalid credentials", async () => {
-      const response = await request(app).get("/microsoft/callback?error=invalid_credentials");
+      const response = await request(app).get(
+        "/microsoft/callback?error=invalid_credentials"
+      );
+      expect(response.status).toEqual(401);
+      expect(response.text).toMatch(/Unauthorized/);
+    });
+  });
+
+  describe("Github", () => {
+    it("Should redirect to Github OAuth2 login page", async () => {
+      const response = await request(app).get("/github");
+      expect(response.status).toEqual(302);
+      expect(response.header.location).toMatch(
+        /^https:\/\/github\.com\/login\/oauth\/authorize\/?/
+      );
+    });
+    it("Should authenticate user with valid credentials", async () => {
+      const response = await request(app).get(
+        "/github/callback?code=valid_code"
+      );
+      expect(response.status).toEqual(302);
+      expect(response.text).toBe("Authenticated");
+    });
+    it("Should not authenticate user with invalid credentials", async () => {
+      const response = await request(app).get(
+        "/github/callback?error=invalid_credentials"
+      );
       expect(response.status).toEqual(401);
       expect(response.text).toMatch(/Unauthorized/);
     });
