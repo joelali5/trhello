@@ -1,6 +1,7 @@
 const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const MicrosoftStrategy = require("passport-microsoft").Strategy;
+const GitHubStrategy = require("passport-github");
 
 passport.use(
   new GoogleStrategy(
@@ -26,6 +27,19 @@ passport.use(
     },
     (accessToken, refreshToken, profile, done) => {
       done(null, profile);
+    }
+  )
+);
+
+passport.use(
+  new GitHubStrategy(
+    {
+      clientID: "cf7308343c557724b7d9",
+      clientSecret: "df9404c7b218ae6ff72e489f0f36084e6af7a6ce",
+      callbackURL: "/github/callback",
+    },
+    (accessToken, refreshToken, profile, done) => {
+        done(null, profile);
     }
   )
 );

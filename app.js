@@ -4,6 +4,8 @@ const app = express();
 const { signup, login } = require("./controllers");
 const utils = require("./utils/utils");
 require("./auth");
+const db = require("./db/connection");
+const bcrypt = require("bcrypt");
 
 app.use(express.json());
 
@@ -15,6 +17,10 @@ app.get("/microsoft-login", (req, res) => {
   res.send(`<a href="/microsoft">Authenticate with Microsoft</a>`);
 });
 
+app.get("/github-login", (req, res) => {
+  res.send(`<a href="/github">Authenticate with Github</a>`);
+});
+
 // Initiate authentication flow with Google
 app.get(
   "/google",
@@ -24,7 +30,7 @@ app.get(
   })
 );
 
-//Initiate the auth flow with microsoft
+// Initiate the auth flow with microsoft
 app.get(
   "/microsoft",
   passport.authenticate("microsoft", {
@@ -32,7 +38,15 @@ app.get(
   })
 );
 
-//Handle failure
+// Initiate the auth flow with github
+app.get(
+  "/github",
+  passport.authenticate("github", {
+    session: false,
+  })
+);
+
+// Handle failure
 app.get("/failure", (req, res) => {
   res.send({ message: "An error has occured!" });
 });
@@ -44,13 +58,32 @@ app.get(
     failureRedirect: "/failure",
     session: false,
   }),
-  function (req, res) {
-    // User authenticated successfully, generate JWT token and send it to user;
-    const token = utils.generateToken(parseInt(req.user.id));
-    res.status(200).send({ token });
+  async function (req, res, next) {
+    const email = req.user.emails[0].value;
+    const firstname = req.user.name.givenName;
+    const lastname = req.user.name.familyName;
+    const password = await bcrypt.hash("12345", 10);
+    let token;
+
+    try {
+      const user = await db.query("SELECT * FROM members WHERE email = $1;", [
+        email,
+      ]);
+
+      if (user.rowCount === 0) {
+        const newUser = await db.query(
+          "INSERT INTO members (email, password, firstname, lastname) VALUES ($1, $2, $3, $4) RETURNING *;",
+          [email, password, firstname, lastname]
+        );
+        token = utils.generateToken(newUser.rows[0].member_id);
+      }
+      token = utils.generateToken(user.rows[0].member_id);
+      res.status(200).send({ token });
+    } catch (error) {
+      next(error);
+    }
   }
 );
-
 // Handle Microsoft's callback after authentication
 app.get(
   "/microsoft/callback",
@@ -58,14 +91,66 @@ app.get(
     failureRedirect: "/failure",
     session: false,
   }),
-  function (req, res) {
-    // // Generate JWT token and send it to user;
-    const token = utils.generateToken(parseInt(req.user.id));
-    res.status(200).send({ token });
+  async function (req, res, next) {
+    const email = req.user.emails[0].value;
+    const firstname = req.user.name.givenName;
+    const lastname = req.user.name.familyName;
+    const password = await bcrypt.hash("12345", 10);
+
+    try {
+      const user = await db.query("SELECT * FROM members WHERE email = $1;", [
+        email,
+      ]);
+      if (user.rowCount === 0) {
+        const newUser = await db.query(
+          "INSERT INTO members (email, password, firstname, lastname) VALUES ($1, $2, $3, $4) RETURNING *;",
+          [email, password, firstname, lastname]
+        );
+        // const memberID = newUser.rows[0].member_id;
+        // const userImg = await db.query("INSERT INTO images ()")
+        token = utils.generateToken(newUser.rows[0].member_id);
+      }
+
+      token = utils.generateToken(user.rows[0].member_id);
+      res.status(200).send({ token });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+// Handle Github's callback after authentication
+app.get(
+  "/github/callback",
+  passport.authenticate("github", {
+    failureRedirect: "/failure",
+    session: false,
+  }),
+  async function (req, res, next) {
+    const email = "enteryouremail@something.com";
+    const password = await bcrypt.hash("12345", 10);
+    const firstname = req.user.displayName.split(" ")[0];
+    const lastname = req.user.displayName.split(" ")[1];
+
+    try {
+      const user = await db.query("SELECT * FROM members WHERE email = $1;", [
+        email,
+      ]);
+      if (user.rowCount === 0) {
+        const newUser = await db.query(
+          "INSERT INTO members (email, password, firstname, lastname) VALUES ($1, $2, $3, $4) RETURNING *;",
+          [email, password, firstname, lastname]
+        );
+        token = utils.generateToken(newUser.rows[0].member_id);
+      }
+      token = utils.generateToken(user.rows[0].member_id);
+      res.status(200).send({ token });
+    } catch (error) {
+      next(error);
+    }
   }
 );
 
-//Check that user is authenticated with valid credentials
+// CHECK USERS ARE AUTHENTICATED WITH VALID CREDENTIALS
 app.use("/google/callback", (err, req, res, next) => {
   if (req.query.code === "valid_code") {
     res.status(302).send("Authenticated");
@@ -82,6 +167,14 @@ app.use("/microsoft/callback", (err, req, res, next) => {
   }
 });
 
+app.use("/github/callback", (err, req, res, next) => {
+  if (req.query.code === "valid_code") {
+    res.status(302).send("Authenticated");
+  } else {
+    next(err);
+  }
+});
+
 app.post("/", signup);
 app.post("/login", login);
 
@@ -91,17 +184,22 @@ app.all("/*", (req, res) => {
 });
 
 app.use("/google/callback", function (err, req, res, next) {
-  // Handle OAuth2.0 authentication errors
   if (req.query.error === "invalid_credentials") {
-    // Handle the specific case of 'invalid_credentials' error
     res.status(401).send("Unauthorized");
   } else {
-    // Handle other errors
     next(err);
   }
 });
 
 app.use("/microsoft/callback", (err, req, res, next) => {
+  if (req.query.error === "invalid_credentials") {
+    res.status(401).send("Unauthorized");
+  } else {
+    next(err);
+  }
+});
+
+app.use("/github/callback", (err, req, res, next) => {
   if (req.query.error === "invalid_credentials") {
     res.status(401).send("Unauthorized");
   } else {
