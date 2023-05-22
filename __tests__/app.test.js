@@ -141,4 +141,28 @@ describe("Social sign-in", () => {
       expect(response.text).toMatch(/Unauthorized/);
     });
   });
+
+  describe("Facebook", () => {
+    it("Should redirect to Facebook OAuth2 login page", async () => {
+      const response = await request(app).get("/facebook");
+      expect(response.status).toEqual(302);
+      expect(response.header.location).toMatch(
+        /^https:\/\/www\.facebook\.com\/v3.2\/dialog\/oauth\/?/
+      );
+    });
+    it("Should authenticate user with valid credentials", async () => {
+      const response = await request(app).get(
+        "/facebook/callback?code=valid_code"
+      );
+      expect(response.status).toEqual(302);
+      expect(response.text).toBe("Authenticated");
+    });
+    it("Should not authenticate user with invalid credentials", async () => {
+      const response = await request(app).get(
+        "/facebook/callback?error=invalid_credentials"
+      );
+      expect(response.status).toEqual(401);
+      expect(response.text).toMatch(/Unauthorized/);
+    });
+  });
 });

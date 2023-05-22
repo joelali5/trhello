@@ -21,6 +21,10 @@ app.get("/github-login", (req, res) => {
   res.send(`<a href="/github">Authenticate with Github</a>`);
 });
 
+app.get("/facebook-login", (req, res) => {
+  res.send(`<a href="/facebook">Authenticate with Facebook</a>`);
+});
+
 // Initiate authentication flow with Google
 app.get(
   "/google",
@@ -46,6 +50,13 @@ app.get(
   })
 );
 
+//Initiate the auth flow from linkedin
+app.get(
+  "/facebook",
+  passport.authenticate("facebook", {
+    session: false,
+  })
+);
 // Handle failure
 app.get("/failure", (req, res) => {
   res.send({ message: "An error has occured!" });
@@ -106,8 +117,6 @@ app.get(
           "INSERT INTO members (email, password, firstname, lastname) VALUES ($1, $2, $3, $4) RETURNING *;",
           [email, password, firstname, lastname]
         );
-        // const memberID = newUser.rows[0].member_id;
-        // const userImg = await db.query("INSERT INTO images ()")
         token = utils.generateToken(newUser.rows[0].member_id);
       }
 
@@ -130,6 +139,38 @@ app.get(
     const password = await bcrypt.hash("12345", 10);
     const firstname = req.user.displayName.split(" ")[0];
     const lastname = req.user.displayName.split(" ")[1];
+
+    try {
+      const user = await db.query("SELECT * FROM members WHERE email = $1;", [
+        email,
+      ]);
+      if (user.rowCount === 0) {
+        const newUser = await db.query(
+          "INSERT INTO members (email, password, firstname, lastname) VALUES ($1, $2, $3, $4) RETURNING *;",
+          [email, password, firstname, lastname]
+        );
+        token = utils.generateToken(newUser.rows[0].member_id);
+      }
+      token = utils.generateToken(user.rows[0].member_id);
+      res.status(200).send({ token });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+//Handle Linkedin's callback after authentication
+app.get(
+  "/facebook/callback",
+  passport.authenticate("facebook", {
+    failureRedirect: "/failure",
+    session: false,
+  }),
+  async function (req, res, next) {
+    const password = await bcrypt.hash("12345", 10);
+    const firstname = req.user.displayName.split(" ")[0];
+    const lastname = req.user.displayName.split(" ")[1];
+    const email = `${firstname}${lastname}@gmail.com`;
 
     try {
       const user = await db.query("SELECT * FROM members WHERE email = $1;", [
@@ -175,6 +216,14 @@ app.use("/github/callback", (err, req, res, next) => {
   }
 });
 
+app.use("/facebook/callback", (err, req, res, next) => {
+  if (req.query.code === "valid_code") {
+    res.status(302).send("Authenticated");
+  } else {
+    next(err);
+  }
+});
+
 app.post("/", signup);
 app.post("/login", login);
 
@@ -200,6 +249,14 @@ app.use("/microsoft/callback", (err, req, res, next) => {
 });
 
 app.use("/github/callback", (err, req, res, next) => {
+  if (req.query.error === "invalid_credentials") {
+    res.status(401).send("Unauthorized");
+  } else {
+    next(err);
+  }
+});
+
+app.use("/facebook/callback", (err, req, res, next) => {
   if (req.query.error === "invalid_credentials") {
     res.status(401).send("Unauthorized");
   } else {
